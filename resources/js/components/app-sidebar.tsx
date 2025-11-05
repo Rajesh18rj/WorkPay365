@@ -386,7 +386,6 @@ export function AppSidebar() {
             });
         }
 
-
         // end
 
         if (trainingChildren.length > 0) {
@@ -395,8 +394,6 @@ export function AppSidebar() {
                 children: trainingChildren
             });
         }
-
-
 
 
 

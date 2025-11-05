@@ -8,6 +8,7 @@ use App\Models\Designation;
 use App\Models\DocumentType;
 use App\Models\Employee;
 use App\Models\EmployeeDocument;
+use App\Models\EmployeeFace;
 use App\Models\User;
 use Spatie\Permission\Models\Role;
 use Illuminate\Http\Request;
@@ -24,7 +25,7 @@ class EmployeeController extends Controller
      */
     public function index(Request $request)
     {
-        $authUser     = Auth::user();
+        $authUser = Auth::user();
         $query = User::withPermissionCheck()
             ->with(['employee.branch', 'employee.department', 'employee.designation'])
             ->where('type', 'employee');
@@ -102,8 +103,7 @@ class EmployeeController extends Controller
                     'max_users' => $authUser->plan->max_employees,
                     'can_create' => $currentUserCount < $authUser->plan->max_employees
                 ];
-            }
-            // Check for staff users (created by company users)
+            } // Check for staff users (created by company users)
             elseif ($authUser->type !== 'superadmin' && $authUser->created_by) {
                 $companyUser = User::find($authUser->created_by);
                 if ($companyUser && $companyUser->type === 'company' && $companyUser->plan) {
@@ -248,6 +248,18 @@ class EmployeeController extends Controller
                 $user->assignRole($employeeRole);
             }
 
+            $base64 = "";
+            // If a new profile image is uploaded
+            if ($request->profile_image) {
+                $file = $request->profile_image;
+
+                $path = storage_path('app/public/media/' . $file);
+
+                if (file_exists($path)) {
+                    $mime = mime_content_type($path); // e.g., image/jpeg
+                    $base64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+                }
+
             // Create Employee model object
             $employee = new Employee();
             $employee->user_id = $user->id;
@@ -276,35 +288,60 @@ class EmployeeController extends Controller
             $employee->bank_branch = $request->bank_branch;
             $employee->tax_payer_id = $request->tax_payer_id;
             $employee->created_by = creatorId();
+            $employee->employee_photo = $base64;
+
+
             $employee->save();
 
-            if (!$employee->save()) {
-                throw new \Exception('Failed to save employee data');
-            }
 
-            // Handle document uploads
-            if ($request->has('documents') && is_array($request->documents)) {
-                foreach ($request->documents as $document) {
-                    if (isset($document['file_path']) && !empty($document['file_path'])) {
-                        EmployeeDocument::create([
-                            'employee_id' => $employee->user_id,
-                            'document_type_id' => $document['document_type_id'],
-                            'file_path' => $document['file_path'],
-                            'expiry_date' => $document['expiry_date'] ?? null,
-                            'verification_status' => 'pending',
-                            'created_by' => creatorId(),
-                        ]);
+//            $base64 = "";
+//            // If a new profile image is uploaded
+//            if ($request->profile_image) {
+//                $file = $request->profile_image;
+//
+//                $path = storage_path('app/public/media/' . $file);
+//
+//                if (file_exists($path)) {
+//                    $mime = mime_content_type($path); // e.g., image/jpeg
+//                    $base64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+
+
+                    EmployeeFace::create([
+                        'employee_id' => $employee->id,
+                        'created_by' => creatorId(),
+                    ]);
+
+
+                    // Handle document uploads
+                    if ($request->has('documents') && is_array($request->documents)) {
+                        foreach ($request->documents as $document) {
+                            if (isset($document['file_path']) && !empty($document['file_path'])) {
+                                EmployeeDocument::create([
+                                    'employee_id' => $employee->user_id,
+                                    'document_type_id' => $document['document_type_id'],
+                                    'file_path' => $document['file_path'],
+                                    'expiry_date' => $document['expiry_date'] ?? null,
+                                    'verification_status' => 'pending',
+                                    'created_by' => creatorId(),
+                                ]);
+                            }
+                        }
                     }
                 }
-            }
 
-            return redirect()->route('hr.employees.index')->with('success', __('Employee created successfully'));
-        } catch (\Exception $e) {
-            \Log::error('Employee creation failed: ' . $e->getMessage());
-            \Log::error('Stack trace: ' . $e->getTraceAsString());
-            return redirect()->back()->with('error', __('Failed to create employee: :message', ['message' => $e->getMessage()]))->withInput();
-        }
+
+
+                    return redirect()->route('hr.employees.index')->with('success', __('Employee created successfully'));
+                }
+
+        catch
+            (\Exception $e) {
+                \Log::error('Employee creation failed: ' . $e->getMessage());
+                \Log::error('Stack trace: ' . $e->getTraceAsString());
+                return redirect()->back()->with('error', __('Failed to create employee: :message', ['message' => $e->getMessage()]))->withInput();
+            }
     }
+
 
     /**
      * Display the specified resource.
@@ -462,6 +499,18 @@ class EmployeeController extends Controller
 
             $user->save();
 
+            $base64 = "";
+            // If a new profile image is uploaded
+            if ($request->profile_image) {
+                $file = $request->profile_image;
+
+                $path = storage_path('app/public/media/' . $file);
+
+                if (file_exists($path)) {
+                    $mime = mime_content_type($path); // e.g., image/jpeg
+                    $base64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+                }
+
             // Update Employee model object
             $employee->employee_id = $request->employee_id;
             $employee->shift_id = $request->shift_id;
@@ -489,30 +538,58 @@ class EmployeeController extends Controller
             $employee->bank_identifier_code = $request->bank_identifier_code;
             $employee->bank_branch = $request->bank_branch;
             $employee->tax_payer_id = $request->tax_payer_id;
+            $employee->employee_photo = $base64;
+
 
             $employee->save();
 
-            // Handle document uploads
-            if ($request->has('documents') && is_array($request->documents)) {
-                foreach ($request->documents as $document) {
-                    if (isset($document['file_path']) && !empty($document['file_path'])) {
-                        EmployeeDocument::create([
-                            'employee_id' => $employee->user_id,
-                            'document_type_id' => $document['document_type_id'],
-                            'file_path' => $document['file_path'],
-                            'expiry_date' => $document['expiry_date'] ?? null,
-                            'verification_status' => 'pending',
-                            'created_by' => creatorId(),
-                        ]);
+            $base64 = "";
+            // If a new profile image is uploaded
+            if ($request->profile_image) {
+                $file = $request->profile_image;
+
+                $path = storage_path('app/public/media/' . $file);
+
+                if (file_exists($path)) {
+                    $mime = mime_content_type($path); // e.g., image/jpeg
+                    $base64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+                }
+
+
+                // Save or update record
+                EmployeeFace::updateOrCreate([
+                    'employee_id' => $employee->id,
+                    'created_by' => creatorId(),
+
+                    ],
+                );
+
+
+                // Handle document uploads
+                if ($request->has('documents') && is_array($request->documents)) {
+                    foreach ($request->documents as $document) {
+                        if (isset($document['file_path']) && !empty($document['file_path'])) {
+                            EmployeeDocument::create([
+                                'employee_id' => $employee->user_id,
+                                'document_type_id' => $document['document_type_id'],
+                                'file_path' => $document['file_path'],
+                                'expiry_date' => $document['expiry_date'] ?? null,
+                                'verification_status' => 'pending',
+                                'created_by' => creatorId(),
+                            ]);
+                        }
                     }
                 }
             }
+            }
+
 
             return redirect()->route('hr.employees.index')->with('success', __('Employee updated successfully'));
         } catch (\Exception $e) {
             return redirect()->back()->with('error', $e->getMessage() ?: __('Failed to update employee'));
         }
     }
+
 
     /**
      * Remove the specified resource from storage.
@@ -683,7 +760,7 @@ class EmployeeController extends Controller
      */
     public function downloadDocument($userId, $documentId)
     {
-        
+
         $user = User::with('employee')->find($userId);
         if (!$user || !$user->employee) {
             return redirect()->back()->with('error', __('Employee not found'));
@@ -712,7 +789,7 @@ class EmployeeController extends Controller
         if (!file_exists($filePath)) {
             return redirect()->back()->with('error', __('Document file not found'));
         }
-        
+
         return response()->download($filePath);
     }
 }
